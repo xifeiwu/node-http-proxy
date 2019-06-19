@@ -29,11 +29,24 @@ var http = require('http'),
 
 var proxy = httpProxy.createServer();
 
+const proxyOptions = {
+  target: 'http://10.10.202.143:30334',
+  changeOrigin: true
+}
+const pathRewrite = path => path.replace('\/j-api\/paas', '');
+
 var server = http.createServer(function (req, res) {
   util.puts('Receiving reverse proxy request for:' + req.url);
+  const urlDesc = url.parse(req.url);
 
-  proxy.web(req, res, {target: req.url, secure: false});
-}).listen(8213);
+  if (req.url.startsWith('/j-api/paas/')) {
+    req.url = pathRewrite(req.url);
+    proxy.web(req, res, proxyOptions);
+  } else {
+    res.statusCode = 200;
+    res.end(util.inspect(urlDesc));
+  }
+}).listen(6006);
 
 server.on('connect', function (req, socket) {
   util.puts('Receiving reverse proxy request for:' + req.url);
