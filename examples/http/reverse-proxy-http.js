@@ -29,10 +29,29 @@ var http = require('http'),
 
 var proxy = httpProxy.createServer();
 
+async function getStreamData(reader) {
+  return new Promise((resolve, reject) => {
+    var bufferList = [];
+    reader.on('data', function(chunk){
+      // console.log(chunk);
+      // result += chunk;
+      bufferList.push(chunk);
+    });
+    reader.on('end', function() {
+      resolve(Buffer.concat(bufferList));
+    });
+    reader.on('error', function(err) {
+      reject(err);
+    })
+  })
+}
+
 proxy.on('proxyRes', (proxyRes, req, res) => {
   if (ignoreUrl(req.url)) {
     return;
   }
+  console.log(`response: ${proxyRes.statusCode} ${proxyRes.statusMessage}`);
+  console.log(proxyRes.headers);
   proxyRes.on('data', data => {
     console.log(`data of: ${req.url}`);
     // console.log(data);
@@ -46,6 +65,13 @@ proxy.on('end', (req, res, proxyRes) => {
   console.log(`proxy end: ${req.url}`);
 });
 
+proxy.on('error', (err, req, res, url) => {
+  console.log(`error catched: ${url}`);
+  console.log(err);
+});
+
+
+// 忽略某些url
 function ignoreUrl(url) {
   const whiteList = [];
   const blackList = ['/favicon.ico'];
@@ -57,22 +83,32 @@ function ignoreUrl(url) {
   }
   return !hanldUrl;
 }
-function preTreadReq(req) {
+
+// 处理request
+async function treatRequest(req) {
   const headers = req.headers;
   ['if-none-match'].forEach(key => {
     headers.hasOwnProperty(key) && (delete headers[key])
     headers.hasOwnProperty(key.toUpperCase()) && (delete headers[key.toUpperCase()])
-  })
+  });
+  console.log(`HTTP ${req.url} ${req.method}`)
+  console.log(req.headers);
+  console.log((await getStreamData(req)).toString());
 }
 
-var server = http.createServer(function (req, res) {
-  preTreadReq(req);
+var server = http.createServer((req, res) => {
   console.log('request for:' + req.url);
-  proxy.web(req, res, {
-    // target: 'http://10.10.202.143:30334',
-    target: 'http://127.0.0.1:8001',
-    changeOrigin: true
-  });
+  treatRequest(req);
+  try {
+    proxy.web(req, res, {
+      // target: 'http://10.10.202.143:30334',
+      target: 'http://127.0.0.1:8001',
+      changeOrigin: true
+    });
+  } catch (err) {
+    console.log(`proxy error:`);
+    console.log(err);
+  }
 }).listen(8888);
 
 console.log(`server started: http://127.0.0.1:8888`);
